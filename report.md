@@ -4,7 +4,7 @@
 
 ## 1 项目简介
 
-本项目是2018-2019秋季学期清华大学刘卫东老师计算机组成原理课程挑战组的实验项目。项目的设计要求、功能测例、监控程序和项目代码可以在？中找到。
+本项目是2018-2019秋季学期清华大学刘卫东老师计算机组成原理课程挑战组的实验项目。项目的设计要求、功能测例、监控程序和项目代码可以在同文件夹下找到。
 
 
 
@@ -15,7 +15,7 @@
 * 支持共？条MIPS指令系统的基本指令
 
 * 支持与CPU有关的异常、中断及TLB表查询
-* 通过全部功能测例，并能运行监控程序，CPU主频达到50Mhz。
+* 通过全部功能测例，并能运行监控程序，CPU主频达到50Mhz
 
 * 支持相关的扩展外设，包括RAM读写、flash读写、串口读写、VGA图像输出等
 
@@ -81,23 +81,17 @@
 
 ### 2.2 CPU设计图
 
-（不会画。底下这个是别人的。）
-
-![No Image](image/CPU.png)
-
-+相关功能的说明
-
 
 
 ### 2.3 贪吃蛇游戏设计
 
-（不会写。。）
+我们采用CPU直接控制的方式写显存，即在汇编代码中使用`store`指令到特定的地址。
 
 
 
 ## 3 CPU基本模块
 
-我们的CPU采用单一时钟的设计，各模块均引入了clk（50Mhz时钟）和rst（1表示复位，0表示运行），在以后的各个模块中不再赘述。
+我们的CPU采用单时钟信号，除flash模块外所有模块均采用50Mhz的时钟。因为flash本身读取速度较慢，故flash采用的是10Mhz时钟。
 
 
 
@@ -167,6 +161,42 @@
 
 ### 4.5 flash
 
+#### 4.5.1 模块简介
+
+flash模块控制flash的读写操作。本模块直接使用了之前小实验的代码，故为VHDL语言编写。在最终展示的版本中，vga_control模块将连接到flash模块，以从flash中读取图片。flash模块还有若干与thinpad_top相连的控制接口，直接对应到FPGA芯片的引脚上。
+
+#### 4.5.2 接口信息
+
+```vhdl
+Port (
+    ctl_read : in std_logic; -- vga_control模块传来的读使能信号
+    addr : in  STD_LOGIC_VECTOR (22 downto 0); -- 从vga_control模块传来的读数据地址
+    data_out : out  STD_LOGIC_VECTOR (15 downto 0); -- 传递给vga_control模块的数据
+    success: out std_logic; -- 读取成功标志
+			  
+	clk : in std_logic; -- 10Mhz时钟信号
+	reset : in std_logic; -- 复位信号
+			  
+    -- 连至外部引脚的flash控制信号
+    flash_byte : out std_logic;
+    flash_vpen : out std_logic;
+    flash_ce : out std_logic;
+    flash_oe : out std_logic;
+    flash_we : out std_logic;
+    flash_rp : out std_logic;
+    flash_addr : out std_logic_vector(22 downto 0);
+    flash_data : inout std_logic_vector(15 downto 0)
+);
+```
+
+#### 4.5.3 实现细节
+
+我们使用一个状态机来实现flash的读取功能。状态转移图如下：
+
+<img src="image/flash.png">
+
+每一次读取flash都需要经过五个状态。最终将success信号置1，同时data_out将读出的数据送出。读flash的信号时序与课本中介绍的相同，在此不再赘述。
+
 
 
 ## 5 其他相关代码
@@ -175,13 +205,102 @@
 
 ### 5.1 对实验框架的修改
 
+最终的实验框架结构如下图：
+
+<img src="image/thinpad_top.png" width="50%">
+
+对原有框架的修改主要是在thinpad_top中加入我们编写的CPU：
+
+```verilog
+CPU CPU0(
+	.clk(clk_50M),
+	.clk_11M(clk_11M0592),
+    .rst(reset_btn),
+    .btn(touch_btn),
+    
+    .dip_sw(dip_sw),
+    
+    // 两块ram的连线
+    .instAddr_o(ext_ram_addr),
+	.dataAddr_o(base_ram_addr),
+	
+	.inst_WE_n_o(ext_ram_we_n),
+	.inst_OE_n_o(ext_ram_oe_n),
+	.inst_CE_n_o(ext_ram_ce_n),
+	.inst_be_n_o(ext_ram_be_n),
+	
+	.data_WE_n_o(base_ram_we_n),
+	.data_OE_n_o(base_ram_oe_n),
+	.data_CE_n_o(base_ram_ce_n),
+	.data_be_n_o(base_ram_be_n),
+		
+	.data_io(base_ram_data),
+	.inst_io(ext_ram_data),
+	
+    // 实验板上的LED和数码管连线
+	.led_o(leds),
+	.dpy0_o(tmp0),
+	.dpy1_o(tmp1),
+	
+	.rxd(rxd),
+	.txd(txd),
+	
+    // VGA相关连线
+	.video_red(video_red),
+	.video_green(video_green),
+	.video_blue(video_blue),
+	.video_hsync(video_hsync),
+	.video_vsync(video_vsync),
+	.video_clk(video_clk),
+	.video_de(video_de),
+	
+    // flash相关连线
+    .flash_a(flash_a),
+    .flash_d(flash_d),
+    .flash_rp_n(flash_rp_n),
+    .flash_vpen(flash_vpen),
+    .flash_ce_n(flash_ce_n),
+    .flash_oe_n(flash_oe_n),
+    .flash_we_n(flash_we_n),
+    .flash_byte_n(flash_byte_n)
+);
+```
+
+另外，我们还修改了`tb.sv`中的`BASE_RAM_INIT_FILE`、`EXT_RAM_INIT_FILE`、`FLASH_INIT_FILE`参数，便于在仿真时进行调试。另外我们增加了ip核bram作为显存（上文中提到过）。除此之外，我们没有对thinpad_top原有代码的其他部分做修改。
+
 
 
 ### 5.2 图片压缩
 
+因为实验板的VGA输出是3位Red，3位Green，2位Blue，普通的图片没有这种格式的，故需要我们进行转换。我们使用python将图片转换为二进制，然后存储到flash中。转换核心代码如下：
+
+```python
+filename = sys.argv[1]
+img = Image.open(filename)
+img = img.resize((800, 600),Image.ANTIALIAS)
+img.save(filename+'_resize.png','png')
+
+file = open(filename[0:-4]+'.bin','wb')
+for i in range(600):
+    for j in range(800):
+        color=img.getpixel((j,i))
+        R = color[0] // 32
+        G = color[1] // 32
+        B = color[2] // 64
+        s = struct.pack('B', R*32+G*4+B)
+        file.write(s)
+file.close()
+```
+
+首先将图片转为800*600大小，然后对于每一个像素的RGB值，其范围本来为[0,255]，通过除以32或64即可将其转换为相应的二进制表示。最后通过`struct.pack`函数写到bin文件中。最后将bin文件导入flash，运行cpu，就可以在显示器中显示图片。
+
+由于最后阶段时间紧，我们没有做视频相关的处理，但我们对视频输出做了基本的设计构想，即采用一些视频压缩算法将视频存入flash，然后使用硬件将视频解压，通过与显示图片相同的方法即可在显示器中播放。
+
 
 
 ### 5.3 贪吃蛇汇编程序
+
+（？？？）
 
 
 
@@ -197,7 +316,11 @@
 
 
 
-### 6.3 展示图片
+### 6.3 从flash读取并展示图片
+
+在线实验平台上的效果如图：
+
+<img src="image/img.png">
 
 
 
@@ -224,13 +347,17 @@
 
 * 确定好开发时间，拒绝拖延。在第一次检查之前，我们面临许多项作业的deadline，本项目只进行了设计分工工作。于是在检查前的几天里，我们通宵达旦、夜以继日，终于支持了MIPS的基本指令。但我们也进行了反思：欲速则不达，一定要合理规划开发时间。在之后的几周，我们一般采用每周3天，每天若干小时的方式开发，既提高了开发效率，又保证了身体健康。
 
-* 循序渐进，敏捷开发。
+* 循序渐进，敏捷开发。虽然我们不是计原软工联合项目组，但软件工程课中所学到的诸多知识如使用git管理代码，迭代开发，敏捷开发等对我们此项目有莫大的帮助。使用git进行版本控制，使我们能够多人同时开发不同的部分。而敏捷开发所提倡的沟通交流也十分重要，包括小组成员之间的沟通，以及与老师和助教的沟通。我们的项目最终有近万行代码，中间过程中修改、重写、丢弃的代码更是不计其数，但总量虽多，只要制定好开发计划，在git的帮助下最终也取得了成功。借用《自己动手写CPU》中的一段话：
 
   >在实现OpenMIPS处理器的过程中，笔者深刻体会到“罗马非一日建成”这句话，外表看起来巨大、庞杂的罗马，也是通过人们一步一步、一天一天、一点一点建成的，处理器也是如此，读者首先不要被处理器的神秘吓到，从最简单的地方入手，逐渐增加功能、完善设计，一行代码一行代码地书写，不仅要有实现处理器的远大目标，还要确立切实可操作的短期目标，比如本周实现除法指令，下周实现转移指令，诸如此类，等有一天你突然回头，会发现，原来已经走了那么远，实现了那么多功能。李白有诗云：两岸猿声啼不住，轻舟已过万重山。当是此意。
 
 
 
 ### 7.3 心得体会
+
+世界上第一台计算机ENIAC每秒只能进行5000次计算，而当今小小的手机计算能力都远超它。从图灵、冯诺依曼的时代开始，一代代的计算机科学家们呕心沥血，继往开来，才让今天的计算机硬件系统如此的精妙，功能如此的强大。在本项目里，我们用自己的双手实现了一个简单的32位CPU。虽然这在历史上早已被实现过，也不是什么困难的事情，但在这其中我们深刻体会到了计算机系统结构的博大精深，也让我们对计算机先贤们肃然起敬。科技的进步，在未来或许也需要我们的一份力量。
+
+光阴似箭，日月如梭，一学期的课程终于结束了。造计算机，这所有贵系人都要经历的一道坎，我们也终于平安度过。虽然我们离”深入理解计算机体系结构“还有很远，但一个简单的CPU，便也是我们努力的见证。
 
 最后借用《自己动手写CPU》中的一段话作为本项目的总结：
 
@@ -255,11 +382,10 @@
 ```
 .
 ├── code
-└── report
-    ├── image
-    │   └── CPU.png
-    ├── report.md
-    └── 大实验报告要求.png
+├── image
+│   └── CPU.png
+├── report.md
+└── 大实验报告要求.png
 ```
 
 
