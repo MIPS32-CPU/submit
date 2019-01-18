@@ -81,7 +81,7 @@
 
 
 
-### 2.2 CPU设计图
+### 2.2 CPU基本设计图
 
 <img src="image/CPU.png">
 
@@ -107,47 +107,552 @@
 
 ### 3.1 PC
 
+#### 3.1.1 模块简介
+
+PC即Program Counter，用于指示当前指令的位置，是CPU五级流水线中的第一段。本模块在执行完一条指令之后修改PC的值为下一条指令地址或需要跳转到的新的指令地址。
+
+#### 3.1.2 接口信息
+
+```verilog
+module pc(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire branchEnable_i,
+    input wire [31:0] branchAddr_i,
+    input wire [5:0] stall, // control的暂停信号
+    input wire flush,
+    input wire [31:0] exceptionHandleAddr_i,
+    
+    output reg [31:0] pc_o, // 传送到IF_ID阶段的PC值
+    output wire [31:0] exceptionType_o,
+    output wire pauseRequest
+);
+```
+
+#### 3.1.3 实现细节
+
+在无异常和暂停的情况下，每一个时钟上升沿到来时，`PC=PC+4`，即跳到内存中的下一条指令。
+
 
 
 ### 3.2 IF_ID
+
+#### 3.2.1 模块简介
+
+IF_ID模块连接PC模块和ID模块。在每一个时钟上升沿到来时，IF_ID模块将PC模块传来的数据传递给ID模块。
+
+#### 3.2.2 接口信息
+
+```verilog
+module IF_ID(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [31:0] pc_i, // PC模块传来的PC值
+    input wire [31:0] inst_i, // ？模块传来的32位指令
+    input wire [5:0] stall, // control的暂停信号
+    input wire flush,
+    input wire [31:0] exceptionType_i, //
+    
+    output reg [31:0] pc_o, // 送至ID模块的PC值
+    output reg [31:0] inst_o, // 送至ID模块的32位指令
+    output reg [31:0] exceptionType_o //
+);
+```
+
+#### 3.2.3 实现细节
+
+每当一个时钟上升沿到来，该模块将pc、inst和exception三个变量的新的值传递给ID阶段。
+
+如果control信号表明需要暂停，那么就？？？
 
 
 
 ### 3.3 ID
 
+#### 3.3.1 模块简介
+
+ID（Identify）模块即译码模块，负责识别指令类型、读取寄存器数据等，是CPU五级流水线的第二段。
+
+#### 3.3.2 接口信息
+
+```verilog
+module ID(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [31:0] inst_i, // IF_ID模块传来的32位指令
+    input wire [31:0] pc_i, // IF_ID模块传来的PC值
+    
+    // register模块传来的读取的两个寄存器数据
+    input wire [31:0] readData1_i,
+    input wire [31:0] readData2_i,
+    
+    input wire [31:0] exceptionType_i,
+    
+    // HILO模块传来的HI、LO寄存器数据
+    input wire [31:0] HI_data_i,
+    input wire [31:0] LO_data_i,
+    
+    //data from CP0
+	input wire [31:0] CP0_data_i,
+	input wire [31:0] cause_i,
+
+    
+    // EX阶段的数据旁路信号
+    input wire [4:0] EX_writeAddr_i,
+    input wire EX_writeEnable_i,
+    input wire[1:0] EX_writeHILO_i,
+    input wire [31:0] EX_writeHI_data_i,
+    input wire [31:0] EX_writeLO_data_i,
+    input wire EX_write_CP0_i,
+    input wire [4:0] EX_write_CP0_addr_i,
+    input wire next_in_delay_slot_i,
+    
+    // MEM阶段的数据旁路信号
+    input wire [4:0] MEM_writeAddr_i,
+    input wire MEM_writeEnable_i,
+    input wire [1:0] MEM_writeHILO_i,
+    input wire [31:0] MEM_writeHI_data_i,
+    input wire [31:0] MEM_writeLO_data_i,
+    input wire MEM_write_CP0_i,
+    input wire [4:0] MEM_write_CP0_addr_i,
+    
+    //about the load conflict
+    input wire [3:0] EX_ramOp_i,
+    
+    output reg [4:0] readAddr1_o,
+    output reg [4:0] readAddr2_o,
+    output reg readEnable1_o,
+    output reg readEnable2_o,
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    
+    output reg [1:0] writeHILO_o,
+    
+    output reg [31:0] oprand1_o,
+    output reg [31:0] oprand2_o,
+    output reg branchEnable_o,
+    output reg [31:0] branchAddr_o,
+    output reg [4:0] ALUop_o,
+    output reg signed_o,
+    
+    output reg write_CP0_o,
+	output reg [4:0] write_CP0_addr_o,
+	output reg [4:0] read_CP0_addr_o,
+    
+    output wire [31:0] inst_o,
+    output wire [31:0] pc_o,
+    output reg in_delay_slot_o,
+    output reg next_in_delay_slot_o,
+    output wire [31:0] exceptionType_o,
+    output reg pauseRequest
+);
+```
+
+####3.3.3 实现细节
+
 
 
 ### 3.4 registers
+
+#### 3.4.1 模块简介
+
+registers模块包含了MIPS指令系统所需要的32个32位通用寄存器，并且提供了ID模块所需的2个读端口和WB模块所需的1个写端口。
+
+#### 3.4.2 接口信息
+
+```verilog
+module registers(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire readEnable1_i, // ID模块第一个读使能信号
+    input wire readEnable2_i, // ID模块第二个读使能信号
+    input wire[4:0] readAddr1_i, // ID模块第一个要读的寄存器地址
+    input wire[4:0] readAddr2_i, // ID模块第二个要读的寄存器地址
+    input wire writeEnable_i, // WB模块的写使能信号
+    input wire[4:0] writeAddr_i, // WB模块要写的寄存器地址
+    input wire[31:0] writeData_i, // WB模块要写入的数据
+    
+    output reg[31:0] readData1_o, // 读取的第一个寄存器数据，送至ID模块
+    output reg[31:0] readData2_o, // 读取的第二个寄存器数据，送至ID模块
+);
+```
+
+#### 3.4.3 实现细节
+
+在程序中直接开辟寄存器空间：`reg[31:0] register[31:0];`
+
+在每一个时钟上升沿到来时，需要写入WB模块的数据。直接将对应的register赋值为writeData即可。
+
+在读取数据时，需要考虑数据冲突问题。如果要ID模块要读取的寄存器的地址恰好等于WB模块要写入的寄存器地址，即之前的某条指令要修改该寄存器的数值，那么就直接返回writeData。否则才返回寄存器中存储的值。
+
+另外需要注意的是，0号寄存器的值永远是0。
 
 
 
 ### 3.5 ID_EX
 
+#### 3.5.1 模块简介
+
+ID_EX模块连接ID模块和EX模块。在每一个时钟上升沿到来时，ID_EX模块将ID模块传来的数据传递给EX模块。
+
+#### 3.5.2 接口信息
+
+```verilog
+module ID_EX(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [4:0] ALUop_i,
+    input wire [31:0] oprand1_i,
+    input wire [31:0] oprand2_i,
+    input wire [4:0] writeAddr_i,
+    input wire writeEnable_i,
+    input wire [1:0] writeHILO_i,
+    input wire [5:0] stall,
+    input wire signed_i,
+    input wire [31:0] inst_i,
+    input wire [31:0] pc_i,
+    input wire next_in_delay_slot_i,
+    input wire in_delay_slot_i,
+    input wire [31:0] exceptionType_i,
+    input wire write_CP0_i,
+    input wire [4:0] write_CP0_addr_i,
+    input wire flush,
+    
+    output reg [4:0] ALUop_o,
+    output reg [31:0] oprand1_o,
+    output reg [31:0] oprand2_o,
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    output reg [1:0] writeHILO_o,
+    output reg signed_o,
+    output reg [31:0] inst_o,
+    output reg next_in_delay_slot_o,
+    output reg in_delay_slot_o,
+    output reg [31:0] exceptionType_o,
+    output reg [31:0] pc_o,
+    output reg write_CP0_o,
+    output reg [4:0] write_CP0_addr_o
+);
+```
+
+####3.5.3 实现细节
+
 
 
 ### 3.6 EX
+
+#### 3.6.1 模块简介
+
+EX模块负责进行算数运算和逻辑运算，是CPU五级流水线中的第三段。
+
+#### 3.6.2 接口信息
+
+```verilog
+module EX(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [4:0] ALUop_i,
+    input wire [31:0] oprand1_i,
+    input wire [31:0] oprand2_i,
+    input wire [4:0] writeAddr_i,
+    input wire writeEnable_i,
+    input wire [1:0] writeHILO_i,
+    input wire signed_i,
+    input wire [63:0] result_div_i,
+    input wire success_i,
+    input wire [31:0] inst_i,
+    input wire [31:0] pc_i,
+    input wire in_delay_slot_i,
+    input wire [31:0] exceptionType_i,
+    input wire write_CP0_i,
+    input wire [4:0] write_CP0_addr_i,
+    
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    output reg [1:0] writeHILO_o,
+    output reg [31:0] HI_data_o,
+    output reg [31:0] LO_data_o,
+    
+    output reg signed_o,
+    output reg [31:0] dividend_o,
+    output reg [31:0] divider_o,
+    output reg start_o,
+    
+    output reg pauseRequest,
+    
+    output reg [31:0] storeData_o,
+    output reg [3:0] ramOp_o,
+    output reg in_delay_slot_o,
+    output wire [31:0] exceptionType_o,
+    output reg write_CP0_o,
+    output reg [4:0] write_CP0_addr_o,
+    output reg [31:0] pc_o
+);
+```
+
+#### 3.6.3 实现细节
 
 
 
 ### 3.7 EX_MEM
 
+#### 3.7.1 模块简介
+
+EX_MEM模块连接EX模块和MEM模块。在每一个时钟上升沿到来时，EX_MEM模块将EX模块传来的数据传递给MEM模块。
+
+#### 3.7.2 接口信息
+
+```verilog
+module EX_MEM(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [31:0] HI_data_i,
+    input wire [31:0] LO_data_i,
+    input wire [4:0] writeAddr_i,
+    input wire writeEnable_i,
+    input wire [1:0] writeHILO_i,
+    input wire [5:0] stall,
+    input wire [3:0] ramOp_i,
+    input wire [31:0] storeData_i,
+    input wire [31:0] pc_i,
+    input wire in_delay_slot_i,
+    input wire [31:0] exceptionType_i,
+    input wire write_CP0_i,
+    input wire [4:0] write_CP0_addr_i,
+    input wire flush,
+    
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    output reg [1:0] writeHILO_o,
+    output reg [31:0] HI_data_o,
+    output reg [31:0] LO_data_o,
+    output reg [3:0] ramOp_o,
+    output reg [31:0] storeData_o,
+    output reg in_delay_slot_o,
+    output reg [31:0] exceptionType_o,
+    output reg write_CP0_o,
+    output reg [4:0] write_CP0_addr_o,
+    output reg [31:0] pc_o
+);
+```
+
+####3.7.3 实现细节
+
 
 
 ### 3.8 MEM
+
+#### 3.8.1 模块简介
+
+MEM模块负责CPU的访存操作，是CPU五级流水线中的第四段。
+
+#### 3.8.2 接口信息
+
+```verilog
+module MEM(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [4:0] writeAddr_i,
+    input wire writeEnable_i,
+    input wire [1:0] writeHILO_i,
+    input wire [31:0] HI_data_i,
+    input wire [31:0] LO_data_i,
+    input wire write_CP0_i,
+    input wire [4:0] write_CP0_addr_i,
+    
+    input wire [31:0] storeData_i,
+    input wire [3:0] ramOp_i,
+    input wire [31:0] load_data_i,
+    input wire in_delay_slot_i,
+    input wire [31:0] exceptionType_i,
+    input wire [31:0] pc_i,
+    
+    input wire [31:0] CP0_status_i,
+	input wire [31:0] CP0_cause_i,
+	input wire [31:0] CP0_epc_i,
+	input wire [31:0] CP0_ebase_i,
+	input wire [31:0] CP0_index_i,
+	input wire [31:0] CP0_random_i,
+	input wire [31:0] CP0_entrylo0_i,
+	input wire [31:0] CP0_entrylo1_i,
+	input wire [31:0] CP0_entryhi_i,
+	
+	input wire WB_write_CP0_i,
+	input wire [4:0] WB_write_CP0_addr_i,
+	input wire [31:0] WB_write_CP0_data_i,
+
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    output reg [1:0] writeHILO_o,
+    output reg [31:0] HI_data_o,
+    output reg [31:0] LO_data_o,
+    
+    output reg [3:0] ramOp_o,
+    output reg [31:0] ramAddr_o,
+ 	output reg [31:0] storeData_o,
+ 	output reg write_CP0_o,
+ 	output reg [4:0] write_CP0_addr_o,
+ 	output reg [31:0] exceptionType_o,
+ 	output wire [31:0] CP0_epc_o,
+	output wire in_delay_slot_o,
+	output wire [31:0] pc_o,
+	output wire [31:0] CP0_ebase_o,
+	output wire [31:0] CP0_index_o,
+	output wire [31:0] CP0_random_o,
+	output wire [31:0] CP0_entrylo0_o,
+	output wire [31:0] CP0_entrylo1_o,
+	output wire [31:0] CP0_entryhi_o,
+	output reg tlbwi, tlbwr
+);
+```
+
+#### 3.8.3 实现细节
 
 
 
 ### 3.9 MEM_WB
 
+#### 3.9.1 模块简介
+
+MEM_WB模块连接MEM模块和WB模块。WB模块是CPU五级流水线的第五段。由于WB模块没有实质的工作，故在CPU设计中将WB模块隐去了。
+
+#### 3.9.2 接口信息
+
+```verilog
+module MEM_WB(
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
+    
+    input wire [4:0] writeAddr_i,
+    input wire writeEnable_i,
+    input wire [1:0] writeHILO_i,
+    input wire [31:0] HI_data_i,
+    input wire [31:0] LO_data_i,
+    input wire [5:0] stall,
+    input wire write_CP0_i,
+    input wire [4:0] write_CP0_addr_i,
+    input wire flush,
+    
+    output reg [4:0] writeAddr_o,
+    output reg writeEnable_o,
+    output reg [1:0] writeHILO_o,
+    output reg [31:0] HI_data_o,
+    output reg write_CP0_o,
+    output reg [4:0] write_CP0_addr_o,
+    output reg [31:0] LO_data_o
+);
+```
+
+####3.9.3 实现细节
+
 
 
 ### 3.10 HILO
+
+#### 3.10.1 模块简介
+
+HILO模块由HI和LO两个32位寄存器组成，用于乘法和除法结果的存储。其实现方式、读写功能与register中的寄存器很相似，都要将数据传至ID模块，并由WB模块写入数据。
+
+#### 3.10.2 接口信息
+
+```verilog
+module HILO(
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+    input wire [1:0] writeEnable_i, // WB模块写使能信号
+    input wire [31:0] HI_data_i, // WB模块要写入HI寄存器的数据
+    input wire [31:0] LO_data_i, // WB模块要写入LO寄存器的数据
+
+    output reg [31:0] HI_data_o, // 送至ID模块的HI寄存器的数据
+    output reg [31:0] LO_data_o // 送至ID模块的LO寄存器的数据
+);
+```
+
+#### 3.10.3 实现细节
+
+本模块的实现与register模块极为相似。定义两个32位寄存器HI和LO用于存储数据。在每一个时钟上升沿到来时，根据写使能信号的值将数据写入HI/LO寄存器中。在读取数据时也需要考虑同样的数据冲突问题。
 
 
 
 ### 3.11 div
 
+#### 3.11.1 模块简介
 
+div模块是专门用于实现除法的模块。除法指令无法在一个周期内完成，故需要将流水线暂停，进行除法运算，运算完成后返回结果，恢复流水线。
+
+#### 3.11.2 接口信息
+
+```verilog
+module div(
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+	input wire signed_i,
+	input wire [31:0] dividend_i,
+	input wire [31:0] divider_i,
+	input wire concell_i,
+	input wire start_i,
+	
+	output reg [63:0] result_o,
+	output reg success_o
+);
+```
+
+#### 3.11.3 实现细节
+
+使用一个状态机来实现除法功能。
+
+
+
+### 3.12 control
+
+#### 3.12.1 模块简介
+
+control模块控制整个流水线的暂停信息。由于仅需要组合逻辑，不需要引入clk接口。
+
+#### 3.12.2 接口信息
+
+```verilog
+module control(
+	input wire rst, // 复位信息
+    
+	input wire stall_from_exe, // EX模块的暂停请求
+	input wire stall_from_id, // ID模块的暂停请求
+	input wire stall_from_mem, // MEM模块的暂停请求
+	input wire stall_from_pc, // PC模块的暂停请求
+	
+	input wire [31:0] exceptionType_i,
+	input wire [31:0] CP0_epc_i,
+	input wire [31:0] CP0_ebase_i,
+	input wire tlbmiss_i,
+	/*stall[0] pc stall
+	stall[1] IF stall
+	stall[2] ID stall
+	stall[3] EXE stall
+	stall[4] MEM stall
+	stall[5] WB stall*/
+	output reg [5:0] stall,
+	output reg flush,
+	output reg [31:0] exceptionHandleAddr_o
+);
+```
+
+#### 3.12.3 实现细节
+
+
+
+### 3.13 defines.v
+
+该文件中定义了各个模块中用到的常量信息，包括指令类型、跳转类型、运算类型等。
 
 
 
@@ -157,28 +662,193 @@
 
 ### 4.1 MMU
 
+#### 4.1.1 模块简介
+
+MMU是CPU的内存管理模块，负责虚拟地址映射和TLB相关操作。
+
+#### 4.1.2 接口信息
+
+```verilog
+module MMU(
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+	input wire [31:0] data_ramAddr_i,
+	input wire [31:0] inst_ramAddr_i,
+	input wire [3:0] ramOp_i,
+	input wire [31:0] storeData_i,
+	input wire [31:0] load_data_i,
+	input wire [31:0] load_inst_i,
+	input wire [31:0] entrylo0_i,
+	input wire [31:0] entrylo1_i,
+	input wire [31:0] entryhi_i,
+	input wire [3:0] index_i,
+	input wire [3:0] random_i,
+	input wire tlbwi,
+	input wire tlbwr,
+	input wire [31:0] EX_ramAddr_i,
+	input wire [31:0] uart_load_data_i,
+	input wire dataReady,
+	input wire writeReady,
+	
+	output reg [3:0] ramOp_o,
+	output reg [31:0] load_data_o,
+	output reg [31:0] load_inst_o,
+	output reg [31:0] storeData_o,
+	output reg [19:0] instAddr_o,
+	output reg [19:0] dataAddr_o,
+	output reg [1:0] bytes_o,
+	output reg [3:0] uartOp_o,
+	output reg [31:0] uart_storeData_o,
+	output wire tlbmiss,
+	output wire EX_tlbmiss,
+	output wire load_o,
+	
+	output reg vga_we, // 送至vga_control阶段的显存写使能信号
+    output reg [18:0] vga_addr, // 送至vga_control阶段的要写入显存的地址
+    output reg [7:0] vga_data // 送至vga_control阶段的要写入显存的颜色数据
+);
+```
+
+#### 4.1.3 实现细节
+
+（？？？？）
+
+当SB指令要写入的地址>=0x90000000时，即为写显存。
+
 
 
 ### 4.2 sram_control
 
+#### 4.2.1 模块简介
+
+sram_control模块负责控制CPU对两篇RAM的数据读写。该模块接收CPU的load或store操作，按照相应的时序读写RAM，并向CPU返回结果。
+
+#### 4.2.2 接口信息
+
+```verilog
+module sram_control (
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+	input wire [19:0] dataAddr_i,
+	input wire [19:0] instAddr_i,
+	input wire [31:0] storeData_i,
+	input wire [3:0] ramOp_i,
+	input wire [1:0] bytes_i,
+	
+	input wire [3:0] EX_ramOp_i,
+	input wire [31:0] EX_ramAddr_i,
+	input wire EX_tlbmiss_i,
+	
+	output reg [31:0] loadInst_o,
+	output reg [31:0] loadData_o,
+	output reg base_we_n_o, base_ce_n_o, base_oe_n_o,
+	output reg [3:0] base_be_n_o,
+	output reg ext_we_n_o, ext_ce_n_o, ext_oe_n_o,
+	output reg [3:0] ext_be_n_o,
+	output reg [19:0] instAddr_o,
+	output reg [19:0] dataAddr_o,
+	output reg pauseRequest, // 送至control模块的暂停信号
+	
+    inout wire [31:0] inst_io, // 连接至外部引脚的Ext Ram数据总线
+    inout wire [31:0] data_io // 连接至外部引脚的Base Ram数据总线
+);
+```
+
+####4.2.3 实现细节
 
 
-### 4.3 uart_control
+
+### 4.3 CP0
+
+#### 4.3.1 模块简介
+
+CP0是协处理器，负责记录CPU 的各种参数、属性和运行状态，在异常处理和中断处理中起到重大作用。
+
+#### 4.3.2 接口信息
+
+```verilog
+module CP0(
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+	input wire writeEnable_i,
+	input wire [4:0] writeAddr_i,
+	input wire [31:0] writeData_i,
+	input wire [4:0] readAddr_i,
+	input wire [5:0] int_i, //hardware interuptions
+	input wire [31:0] exceptionType_i,
+	input wire [31:0] exceptionAddr_i,
+	input wire in_delay_slot_i,
+	input wire [31:0] badVaddr_i,
+	input wire tlbmiss_i,
+	input wire load_i,
+	
+	output reg [31:0] readData_o,
+	output reg [31:0] status_o,
+	output reg [31:0] epc_o,
+	output reg [31:0] cause_o,
+	output reg [31:0] ebase_o,
+	output reg [31:0] badVaddr_o,
+	output reg [31:0] index_o,
+	output reg [31:0] random_o,
+	output reg [31:0] entrylo0_o,
+	output reg [31:0] entrylo1_o,
+	output reg [31:0] pagemask_o,
+	output reg [31:0] config_o,
+	output reg [31:0] entryhi_o,
+	output reg [31:0] context_o
+);
+```
+
+####4.3.3 实现细节
 
 
 
-### 4.4 vga_control
+### 4.4 uart_control
 
 #### 4.4.1 模块简介
 
-此模块控制CPU的视频输出信号。在此模块中，VGA周期地访问显存，并将显存中读取出的颜色数据输出。同时还接收MMU传递的写显存信号，修改显存中某点的颜色值。
+Uart_control是串口控制模块。
 
 #### 4.4.2 接口信息
 
 ```verilog
+module uart_control(
+	input wire clk, // 50Mhz时钟信号
+	input wire rst, // 复位信号
+    
+	input wire rxd,
+	input wire [31:0] storeData,
+	input wire [3:0] uartOp_i,
+	input wire [3:0] EX_uartOp_i,
+	input wire [31:0] EX_addr_i,
+	
+	output wire txd,
+	output reg [31:0] loadData_o,
+	output reg pauseRequest,
+	output wire dataReady,
+	output wire writeReady
+);
+```
+
+####4.4.3 实现细节
+
+
+
+### 4.5 vga_control
+
+#### 4.5.1 模块简介
+
+此模块控制CPU的视频输出信号。在此模块中，VGA周期地访问显存，并将显存中读取出的颜色数据输出。同时还接收MMU传递的写显存信号，修改显存中某点的颜色值。
+
+#### 4.5.2 接口信息
+
+```verilog
 module vga_control(
-    input wire clk,
-    input wire rst,
+    input wire clk, // 50Mhz时钟信号
+    input wire rst, // 复位信号
     
     // 连接到外部引脚的vga控制信号
     output wire[2:0] video_red,
@@ -202,7 +872,7 @@ module vga_control(
 );
 ```
 
-#### 4.4.3 实现细节
+#### 4.5.3 实现细节
 
 因为显存需要的存储容量太大（$800*600*8$），不可能通过在FPGA中直接开辟这么大的空间来存储。在这个问题上我们思考了很久，也参考了其他同学的做法，最终决定使用Xilinx芯片自带的片内资源：IP核Block Ram来作为显存。Vivado支持直接开辟bram，并且给出了相应的调用方法：
 
@@ -221,9 +891,9 @@ blk_mem_gen_0 bram (
 );
 ```
 
-我们使用的是一个简单双口RAM，A口用来写数据，B口用来读数据。bram的数据宽度为8（RGB颜色的宽度），数据深度为480000，即800*600，分别对应输出信号的一个像素点。
+我们使用的是一个简单双口RAM，A口用来写数据，B口用来读数据。bram的数据宽度为8（RGB颜色的宽度），数据深度为480000，即800*600，分别对应输出信号的一个像素点，从上到下一行一行地扫描。
 
-我们在代码中也调用了thinpad_top自带的vga模块进行视频输出。只需要在相应的hdata和vdata到来时，从bram的B口中读取相应位置的数据即可。但是，bram读取数据需要一个周期，而我们必须在hdata和vdata到来的同时送出颜色信号。为了解决这个问题，我们的实现是根据hdata和vdata计算出下一个扫描像素的位置，并将addrb设为相应的地址。这样在下一时钟周期到来时，doutb读出的数据就正好是hdata和vdata所对应的颜色。
+我们在代码中也调用了thinpad_top自带的vga模块进行视频输出。只需要在相应的hdata和vdata到来时，从bram的B口中读取相应位置的数据即可。但是，bram读取数据需要一个周期，而我们必须在hdata和vdata到来的同时送出颜色信号。为了解决这个问题，我们的实现是根据hdata和vdata计算出下一个扫描像素的位置，并将addrb设为相应的地址。这样在下一时钟上升沿到来时，doutb读出的数据就正好是hdata和vdata所对应的颜色。
 
 bram的A口用来写入MMU传来的数据。MMU中的数据是相应的SB指令传来的。写显存时只需将addra设为要写的地址，将wea置1即可。
 
@@ -231,13 +901,13 @@ bram的A口用来写入MMU传来的数据。MMU中的数据是相应的SB指令�
 
 
 
-### 4.5 flash
+### 4.6 flash
 
-#### 4.5.1 模块简介
+#### 4.6.1 模块简介
 
 flash模块控制flash的读写操作。本模块直接使用了之前小实验的代码，故为VHDL语言编写。在最终展示的版本中，vga_control模块将连接到flash模块，以从flash中读取图片。flash模块还有若干与thinpad_top相连的控制接口，直接对应到FPGA芯片的引脚上。
 
-#### 4.5.2 接口信息
+#### 4.6.2 接口信息
 
 ```vhdl
 Port (
@@ -261,7 +931,7 @@ Port (
 );
 ```
 
-#### 4.5.3 实现细节
+#### 4.6.3 实现细节
 
 我们使用一个状态机来实现flash的读取功能。状态转移图如下：
 
@@ -344,7 +1014,7 @@ CPU CPU0(
 
 
 
-### 5.2 图片压缩
+### 5.2 图片格式转换
 
 因为实验板的VGA输出是3位Red，3位Green，2位Blue，普通的图片没有这种格式的，故需要我们进行转换。我们使用python将图片转换为二进制，然后存储到flash中。转换核心代码如下：
 
@@ -434,6 +1104,8 @@ file.close()
 * 循序渐进，敏捷开发。虽然我们不是计原软工联合项目组，但软件工程课中所学到的诸多知识如使用git管理代码，迭代开发，敏捷开发等对我们此项目有莫大的帮助。使用git进行版本控制，使我们能够多人同时开发不同的部分。而敏捷开发所提倡的沟通交流也十分重要，包括小组成员之间的沟通，以及与老师和助教的沟通。我们的项目最终有近万行代码，中间过程中修改、重写、丢弃的代码更是不计其数，但总量虽多，只要制定好开发计划，在git的帮助下最终也取得了成功。借用《自己动手写CPU》中的一段话：
 
   >在实现OpenMIPS处理器的过程中，笔者深刻体会到“罗马非一日建成”这句话，外表看起来巨大、庞杂的罗马，也是通过人们一步一步、一天一天、一点一点建成的，处理器也是如此，读者首先不要被处理器的神秘吓到，从最简单的地方入手，逐渐增加功能、完善设计，一行代码一行代码地书写，不仅要有实现处理器的远大目标，还要确立切实可操作的短期目标，比如本周实现除法指令，下周实现转移指令，诸如此类，等有一天你突然回头，会发现，原来已经走了那么远，实现了那么多功能。李白有诗云：两岸猿声啼不住，轻舟已过万重山。当是此意。
+
+* 在开发过程中我们多次遇到了仿真结果与在板子上运行结果不一致的情况。在经历了诸多痛苦的调试过程后，我们总结了以下几点可能的原因：代码中的latches没有消除；代码中连线错误，可能一个信号对应了多根线；reg和wire的使用错误；时序没有理清楚。硬件上的问题是我们以前的程序设计中从来没有遇到过的，因此犯了很多错，踩了很多坑。不过只要仔细检查，总能发现程序中的错误。同样，在写代码的阶段不能贪图快，也要注重代码质量。
 
 
 
