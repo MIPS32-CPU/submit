@@ -67,25 +67,35 @@
 
 
 
+
+
 ## 2 项目设计
 
 
 
 ### 2.1 指令系统
 
-我们完成的cpu共支持？条指令。各指令的格式、功能如下：
+我们完成的32位MIPS CPU共支持？条指令。各指令的格式、功能如下：
 
-（一个表格）
+（+一个表格）
 
 
 
 ### 2.2 CPU设计图
 
+<img src="image/CPU.png">
+
+各模块的详细介绍和功能可参见报告后面部分。
+
 
 
 ### 2.3 贪吃蛇游戏设计
 
-我们采用CPU直接控制的方式写显存，即在汇编代码中使用`store`指令到特定的地址。
+为了充分展示CPU的功能，我们使用汇编语言编写了一个贪吃蛇游戏程序。贪吃蛇游戏是一款经典的益智游戏，既简单又耐玩，通过控制蛇头方向吃果实，从而使得蛇变得越来越长，当蛇撞到墙壁或自己的尾巴时，游戏结束。
+
+为了在显示器中的相应位置显示颜色，我们采用CPU直接控制的方式写显存，即在汇编代码中使用SB指令到特定的地址。
+
+
 
 
 
@@ -139,6 +149,8 @@
 
 
 
+
+
 ## 4 CPU扩展模块
 
 
@@ -156,6 +168,66 @@
 
 
 ### 4.4 vga_control
+
+#### 4.4.1 模块简介
+
+此模块控制CPU的视频输出信号。在此模块中，VGA周期地访问显存，并将显存中读取出的颜色数据输出。同时还接收MMU传递的写显存信号，修改显存中某点的颜色值。
+
+#### 4.4.2 接口信息
+
+```verilog
+module vga_control(
+    input wire clk,
+    input wire rst,
+    
+    // 连接到外部引脚的vga控制信号
+    output wire[2:0] video_red,
+    output wire[2:0] video_green,
+    output wire[1:0] video_blue,
+    output wire video_hsync,
+    output wire video_vsync,
+    output wire video_clk,
+    output wire video_de,
+    
+    input wire img_show, // 是否要从flash中读取图片并展示
+    
+    output reg vga_re, // flash读使能信号
+    output reg [22:0] vga_addr, // 要读取的flash地址
+    input wire [15:0] vga_data, // 读出的flash数据
+    input wire vga_success, // flash读取成功标志
+    
+    input wire write_enable, // 写显存使能信号
+    input wire [18:0] write_address, // 写显存地址
+    input wire [7:0] write_data // 写入显存的数据
+);
+```
+
+#### 4.4.3 实现细节
+
+因为显存需要的存储容量太大（$800*600*8$），不可能通过在FPGA中直接开辟这么大的空间来存储。在这个问题上我们思考了很久，也参考了其他同学的做法，最终决定使用Xilinx芯片自带的片内资源：IP核Block Ram来作为显存。Vivado支持直接开辟bram，并且给出了相应的调用方法：
+
+```verilog
+blk_mem_gen_0 bram (
+    .clka(clk),    // input wire clka
+    .ena(ena),      // input wire ena
+    .wea(wea),      // input wire [0 : 0] wea
+    .addra(addra),  // input wire [18 : 0] addra
+    .dina(dina),    // input wire [7 : 0] dina
+
+    .clkb(clk),    // input wire clkb
+    .enb(enb),      // input wire enb
+    .addrb(addrb),  // input wire [18 : 0] addrb
+    .doutb(doutb)  // output wire [7 : 0] doutb
+);
+```
+
+我们使用的是一个简单双口RAM，A口用来写数据，B口用来读数据。bram的数据宽度为8（RGB颜色的宽度），数据深度为480000，即800*600，分别对应输出信号的一个像素点。
+
+我们在代码中也调用了thinpad_top自带的vga模块进行视频输出。只需要在相应的hdata和vdata到来时，从bram的B口中读取相应位置的数据即可。但是，bram读取数据需要一个周期，而我们必须在hdata和vdata到来的同时送出颜色信号。为了解决这个问题，我们的实现是根据hdata和vdata计算出下一个扫描像素的位置，并将addrb设为相应的地址。这样在下一时钟周期到来时，doutb读出的数据就正好是hdata和vdata所对应的颜色。
+
+bram的A口用来写入MMU传来的数据。MMU中的数据是相应的SB指令传来的。写显存时只需将addra设为要写的地址，将wea置1即可。
+
+我们的接口中还有一个img_show信号，用来判断当前是要从flash中读取图片并展示，还是要运行贪吃蛇程序玩游戏。当img_show为true时，vga_control将向flash传递信号，将flash中的图片像素数据依次读出并存储到显存中。通过init_end信号判定是否读取完毕。具体实现可参见相关代码。
 
 
 
@@ -196,6 +268,8 @@ Port (
 <img src="image/flash.png">
 
 每一次读取flash都需要经过五个状态。最终将success信号置1，同时data_out将读出的数据送出。读flash的信号时序与课本中介绍的相同，在此不再赘述。
+
+
 
 
 
@@ -304,15 +378,21 @@ file.close()
 
 
 
+
+
 ## 6 实验成果展示
 
 
 
 ### 6.1 通过功能测例
 
+（？？？）
+
 
 
 ### 6.2 运行监控程序
+
+（？？？）
 
 
 
@@ -325,6 +405,10 @@ file.close()
 
 
 ### 6.4 贪吃蛇游戏
+
+（？？？）
+
+
 
 
 
@@ -370,6 +454,8 @@ file.close()
 >一个人的CPU是骄傲的
 >
 >让我们骄傲一次
+
+
 
 
 
